@@ -1,0 +1,105 @@
+{
+  "name": "codingwithrk/no-screenshot",
+  "version": "1.0.0",
+  "description": "A NativePHP Mobile plugin that prevents screenshots, blocks screen recording and global protection in App-switch state in your mobile app.",
+  "namespace": "NoScreenshot",
+  "keywords": [
+    "screenshot",
+    "screen-recording",
+    "security",
+    "privacy",
+    "protection"
+  ],
+  "category": "security",
+  "license": "MIT",
+  "pricing": {
+    "type": "free"
+  },
+  "author": {
+    "name": "CodingwithRK",
+    "email": "pappalarajkumar@gmail.com",
+    "url": "https://codingwithrk.com"
+  },
+  "homepage": "",
+  "repository": "",
+  "funding": [],
+  "platforms": [
+    "android",
+    "ios"
+  ],
+  "icon": "resources/icon.png",
+  "screenshots": [],
+  "bridge_functions": [
+    {
+      "name": "NoScreenshot.DisableGlobal",
+      "android": "com.codingwithrk.plugins.no_screenshot.NoScreenshotFunctions.DisableGlobal",
+      "ios": "NoScreenshotFunctions.DisableGlobal",
+      "description": "Block screenshots and screen recording for the entire app"
+    },
+    {
+      "name": "NoScreenshot.EnableGlobal",
+      "android": "com.codingwithrk.plugins.no_screenshot.NoScreenshotFunctions.EnableGlobal",
+      "ios": "NoScreenshotFunctions.EnableGlobal",
+      "description": "Allow screenshots and screen recording app-wide"
+    },
+    {
+      "name": "NoScreenshot.GetStatus",
+      "android": "com.codingwithrk.plugins.no_screenshot.NoScreenshotFunctions.GetStatus",
+      "ios": "NoScreenshotFunctions.GetStatus",
+      "description": "Return the current protection status and screen-recording state"
+    },
+    {
+      "name": "NoScreenshot.Toggle",
+      "android": "com.codingwithrk.plugins.no_screenshot.NoScreenshotFunctions.Toggle",
+      "ios": "NoScreenshotFunctions.Toggle",
+      "description": "Toggle global screenshot and screen-recording protection on/off"
+    },
+    {
+      "name": "NoScreenshot.StartScreenshotDetection",
+      "android": "com.codingwithrk.plugins.no_screenshot.NoScreenshotFunctions.StartScreenshotDetection",
+      "ios": "NoScreenshotFunctions.StartScreenshotDetection",
+      "description": "Start detecting screenshot events and fire ScreenshotAttempted when one is taken"
+    },
+    {
+      "name": "NoScreenshot.StopScreenshotDetection",
+      "android": "com.codingwithrk.plugins.no_screenshot.NoScreenshotFunctions.StopScreenshotDetection",
+      "ios": "NoScreenshotFunctions.StopScreenshotDetection",
+      "description": "Stop detecting screenshot events"
+    }
+  ],
+  "android": {
+    "min_sdk_version": 21,
+    "permissions": [],
+    "repositories": [],
+    "dependencies": {
+      "implementation": []
+    },
+    "activities": [],
+    "services": [],
+    "receivers": [],
+    "providers": []
+  },
+  "ios": {
+    "min_version": "13.0",
+    "permissions": [],
+    "repositories": [],
+    "dependencies": {
+      "swift_packages": [],
+      "pods": []
+    }
+  },
+  "assets": {
+    "android": [],
+    "ios": []
+  },
+  "secrets": [],
+  "events": [
+    "Codingwithrk\\NoScreenshot\\Events\\ScreenshotAttempted",
+    "Codingwithrk\\NoScreenshot\\Events\\ScreenRecordingStarted",
+    "Codingwithrk\\NoScreenshot\\Events\\ScreenRecordingStopped"
+  ],
+  "service_provider": "Codingwithrk\\NoScreenshot\\NoScreenshotServiceProvider",
+  "hooks": {
+    "copy_assets": "nativephp:no-screenshot:copy-assets"
+  }
+}
