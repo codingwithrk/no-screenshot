@@ -44,6 +44,8 @@ Mainly useful for apps that handle sensitive data, such as `financial`, `healthc
 
 ```bash
 composer require codingwithrk/no-screenshot
+
+php artisan native:plugin:register codingwithrk/no-screenshot
 ```
 
 The service provider and `NoScreenshot` facade alias are auto-discovered by Laravel — no manual registration needed.
