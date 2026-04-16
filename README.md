@@ -1,5 +1,9 @@
 # NoScreenshot plugin for NativePHP Mobile
 
+[![Latest Version](https://img.shields.io/packagist/v/codingwithrk/no-screenshot?style=plastic)](https://packagist.org/packages/codingwithrk/no-screenshot)
+![Packagist Downloads](https://img.shields.io/packagist/dt/codingwithrk/no-screenshot?style=plastic)
+![License](https://img.shields.io/packagist/l/codingwithrk/no-screenshot?style=plastic)
+
 A NativePHP Mobile plugin that prevents screenshots, blocks screen recording and global protection in App-switch state in your mobile app.
 
 Mainly useful for apps that handle sensitive data, such as `financial`, `healthcare`, or `enterprise applications`, where protecting user `privacy and data security` is paramount.
