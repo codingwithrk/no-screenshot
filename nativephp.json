@@ -1,6 +1,6 @@
 {
   "name": "codingwithrk/no-screenshot",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A NativePHP Mobile plugin that prevents screenshots, blocks screen recording and global protection in App-switch state in your mobile app.",
   "namespace": "NoScreenshot",
   "keywords": [
