@@ -113,9 +113,34 @@ describe('Native Code', function () {
 
         expect($content)->toContain('object ScreenshotGuardState');
         expect($content)->toContain('FLAG_SECURE');
+        expect($content)->toContain('saveProtectionState');
+        expect($content)->toContain('restoreProtectionState');
         expect($content)->not->toContain('AppSwitcherOverlayConfig');
         expect($content)->not->toContain('SetAppSwitcherOverlay');
         expect($content)->not->toContain('appSwitcherOverlay');
+    });
+
+    it('has Android ContentProvider init file that applies FLAG_SECURE at onCreate', function () {
+        $file = $this->pluginPath . '/resources/android/NoScreenshotInitProvider.kt';
+        expect(file_exists($file))->toBeTrue();
+
+        $content = file_get_contents($file);
+        expect($content)->toContain('package com.codingwithrk.plugins.no_screenshot');
+        expect($content)->toContain('class NoScreenshotInitProvider');
+        expect($content)->toContain('ContentProvider');
+        expect($content)->toContain('registerActivityLifecycleCallbacks');
+        expect($content)->toContain('FLAG_SECURE');
+    });
+
+    it('manifest registers NoScreenshotInitProvider as an Android ContentProvider', function () {
+        $manifest = json_decode(file_get_contents($this->manifestPath), true);
+
+        $providers = $manifest['android']['providers'] ?? [];
+        expect($providers)->toBeArray();
+        expect(count($providers))->toBeGreaterThanOrEqual(1);
+
+        $names = array_column($providers, 'name');
+        expect($names)->toContain('.NoScreenshotInitProvider');
     });
 
     it('Swift implements UIScreen capture observer without app switcher code', function () {
@@ -123,9 +148,18 @@ describe('Native Code', function () {
 
         expect($content)->toContain('UIScreen.capturedDidChangeNotification');
         expect($content)->toContain('UIScreen.main.isCaptured');
+        expect($content)->toContain('willResignActiveNotification');
+        expect($content)->toContain('isSecureTextEntry');
+        expect($content)->toContain('NativePHPNoScreenshotInit');
         expect($content)->not->toContain('AppSwitcherOverlayConfig');
         expect($content)->not->toContain('SetAppSwitcherOverlay');
         expect($content)->not->toContain('appSwitcherOverlay');
+    });
+
+    it('manifest declares iOS init_function', function () {
+        $manifest = json_decode(file_get_contents($this->manifestPath), true);
+
+        expect($manifest['ios']['init_function'] ?? null)->toBe('NativePHPNoScreenshotInit');
     });
 
     it('has matching bridge function classes in native code', function () {

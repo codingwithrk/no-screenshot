@@ -6,21 +6,31 @@ import UIKit
 //
 // Singleton that tracks the current protection configuration and manages:
 //   1. A black overlay window to block screen-recording capture.
-//   2. A screenshot-detection observer that fires a PHP event.
+//   2. An app-switcher overlay (willResignActive) so the OS thumbnail is black.
+//   3. A UITextField isSecureTextEntry container that prevents screenshot
+//      content from being captured — the OS renders the protected area as
+//      blank in any screenshot taken while protection is active.
+//   4. A screenshot-detection observer that fires a PHP event.
+//   5. UserDefaults persistence so protection survives app restarts.
 //
 // iOS mechanisms:
-//   - Screenshot prevention: iOS does not allow apps to block the system
-//     screenshot gesture. Detection is available via
-//     UIApplication.userDidTakeScreenshotNotification.
+//   - Screenshot prevention: wrap window content inside a UITextField that has
+//     isSecureTextEntry = true.  iOS renders its subtree via the system DRM
+//     compositing path, which is excluded from both screenshot capture and
+//     screen-recording.  The secured area appears blank/white in screenshots.
 //   - Screen-recording detection + mitigation: UIScreen.main.isCaptured
 //     returns true whenever the screen is being recorded or mirrored.
 //     When protection is active the plugin overlays a black UIWindow.
+//   - App-switcher protection: observe UIApplication.willResignActiveNotification
+//     and show the same overlay before the OS captures the recents thumbnail.
 // ---------------------------------------------------------------------------
 
 final class ScreenshotGuardState {
 
     static let shared = ScreenshotGuardState()
     private init() {}
+
+    private let kIsGloballyProtected = "no_screenshot_is_globally_protected"
 
     // MARK: - Protection state
 
@@ -35,10 +45,30 @@ final class ScreenshotGuardState {
     private var captureObserver: NSObjectProtocol?
     private var recordingOverlayWindow: UIWindow?
 
+    // MARK: - App-switcher protection
+
+    private var willResignObserver: NSObjectProtocol?
+    private var didBecomeActiveObserver: NSObjectProtocol?
+
+    // MARK: - Screenshot prevention (UITextField isSecureTextEntry)
+
+    private var secureTextField: UITextField?
+
     // MARK: - Screenshot detection
 
     var isScreenshotDetectionActive: Bool = false
     private var screenshotObserver: NSObjectProtocol?
+
+    // MARK: - Persistence
+
+    func saveProtectionState(_ protected: Bool) {
+        isGloballyProtected = protected
+        UserDefaults.standard.set(protected, forKey: kIsGloballyProtected)
+    }
+
+    func restoreProtectionState() {
+        isGloballyProtected = UserDefaults.standard.bool(forKey: kIsGloballyProtected)
+    }
 
     // MARK: - Apply protection
 
@@ -48,8 +78,12 @@ final class ScreenshotGuardState {
             if self.isProtectionActive {
                 self.startCaptureObserver()
                 self.syncRecordingOverlay()
+                self.startBackgroundProtection()
+                self.applyScreenshotPrevention()
             } else {
                 self.stopCaptureObserver()
+                self.stopBackgroundProtection()
+                self.removeScreenshotPrevention()
             }
         }
     }
@@ -118,6 +152,119 @@ final class ScreenshotGuardState {
         recordingOverlayWindow = nil
     }
 
+    // MARK: - App-switcher protection
+
+    /// Register observers so the black overlay is shown when the app enters the
+    /// background (preventing the OS from capturing a real screenshot for the
+    /// app switcher) and hidden again when the app returns to the foreground.
+    private func startBackgroundProtection() {
+        guard willResignObserver == nil else { return }
+
+        willResignObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self, self.isProtectionActive else { return }
+            self.showRecordingOverlay()
+        }
+
+        didBecomeActiveObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            // Keep overlay if screen recording is still active; otherwise hide it.
+            if !UIScreen.main.isCaptured {
+                self.removeRecordingOverlay()
+            }
+            // Window may not have been ready during apply(); retry here.
+            if self.isProtectionActive && self.secureTextField == nil {
+                self.applyScreenshotPrevention()
+            }
+        }
+    }
+
+    private func stopBackgroundProtection() {
+        if let obs = willResignObserver {
+            NotificationCenter.default.removeObserver(obs)
+            willResignObserver = nil
+        }
+        if let obs = didBecomeActiveObserver {
+            NotificationCenter.default.removeObserver(obs)
+            didBecomeActiveObserver = nil
+        }
+    }
+
+    // MARK: - Screenshot prevention (UITextField isSecureTextEntry)
+
+    /// Move all window content into the secure rendering container of a
+    /// UITextField that has isSecureTextEntry = true.
+    ///
+    /// iOS routes the subtree of that container through its system DRM
+    /// compositing path, which is excluded from screenshot capture.  The
+    /// protected area appears blank in any screenshot taken while active.
+    ///
+    /// Falls back gracefully if the internal container is unavailable (e.g.
+    /// future iOS changes the UITextField structure).
+    private func applyScreenshotPrevention() {
+        guard secureTextField == nil, let window = getMainWindow() else { return }
+
+        let textField = UITextField()
+        textField.isSecureTextEntry = true
+        textField.frame = window.bounds
+        textField.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        textField.isUserInteractionEnabled = false
+
+        // Insert behind existing content so z-order is preserved after the move.
+        window.insertSubview(textField, at: 0)
+        window.layoutIfNeeded()
+
+        // UITextField lazily creates its internal content view on layout.
+        // That first subview is the secure rendering container.
+        guard let secureContainer = textField.subviews.first else {
+            textField.removeFromSuperview()
+            return
+        }
+
+        secureContainer.frame = window.bounds
+        secureContainer.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        secureContainer.isUserInteractionEnabled = true
+
+        // Move every existing window subview (except the textField itself) into
+        // the secure container; frames are preserved because secureContainer
+        // covers the same bounds as the window.
+        let contentViews = window.subviews.filter { $0 !== textField }
+        for view in contentViews {
+            let savedFrame = view.frame
+            secureContainer.addSubview(view)
+            view.frame = savedFrame
+        }
+
+        secureTextField = textField
+    }
+
+    /// Restore window content from the secure container back to the window and
+    /// remove the UITextField, leaving the hierarchy as it was before.
+    private func removeScreenshotPrevention() {
+        guard let textField = secureTextField,
+              let secureContainer = textField.subviews.first,
+              let window = textField.window else {
+            secureTextField = nil
+            return
+        }
+
+        for view in Array(secureContainer.subviews) {
+            let savedFrame = view.frame
+            window.addSubview(view)
+            view.frame = savedFrame
+        }
+
+        textField.removeFromSuperview()
+        secureTextField = nil
+    }
+
     // MARK: - Screenshot detection
 
     /// Register a UIApplication.userDidTakeScreenshotNotification observer that
@@ -157,6 +304,32 @@ final class ScreenshotGuardState {
                 .compactMap { $0 as? UIWindowScene }
                 .first
     }
+
+    private func getMainWindow() -> UIWindow? {
+        guard let scene = activeWindowScene() else { return nil }
+        return scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Plugin initialisation
+//
+// Called by NativePHP at app startup (before bridge functions are registered).
+// Restores the persisted protection state and re-arms all observers so that
+// the UITextField screenshot prevention and app-switcher overlay are active
+// from the very first frame — not only after the PHP controller calls
+// disableGlobally().
+// ---------------------------------------------------------------------------
+
+@_cdecl("NativePHPNoScreenshotInit")
+public func NativePHPNoScreenshotInit() {
+    ScreenshotGuardState.shared.restoreProtectionState()
+    if ScreenshotGuardState.shared.isGloballyProtected {
+        // apply() dispatches to main; the window may not exist yet at this
+        // point.  The didBecomeActive observer registered inside apply() will
+        // retry applyScreenshotPrevention() once the window is ready.
+        ScreenshotGuardState.shared.apply()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -169,13 +342,16 @@ enum NoScreenshotFunctions {
 
     /// Enable protection for the entire app.
     ///
-    /// Starts observing UIScreen.capturedDidChangeNotification and immediately
-    /// shows the black overlay if the screen is already being recorded.
+    /// Android: sets FLAG_SECURE (blocks all OS capture paths).
+    /// iOS: activates the UITextField screenshot prevention, the
+    ///      UIScreen.capturedDidChangeNotification observer, and the
+    ///      willResignActive overlay so the app-switcher thumbnail is black.
+    ///      Persists the choice so protection survives app restarts.
     ///
     /// Response: { success: Bool, isGloballyProtected: Bool }
     class DisableGlobal: BridgeFunction {
         func execute(parameters: [String: Any]) throws -> [String: Any] {
-            ScreenshotGuardState.shared.isGloballyProtected = true
+            ScreenshotGuardState.shared.saveProtectionState(true)
             ScreenshotGuardState.shared.apply()
 
             return BridgeResponse.success(data: [
@@ -187,12 +363,12 @@ enum NoScreenshotFunctions {
 
     // -----------------------------------------------------------------------
 
-    /// Remove global protection. The recording overlay observer is stopped.
+    /// Remove global protection. All observers and the secure container are torn down.
     ///
     /// Response: { success: Bool, isGloballyProtected: Bool }
     class EnableGlobal: BridgeFunction {
         func execute(parameters: [String: Any]) throws -> [String: Any] {
-            ScreenshotGuardState.shared.isGloballyProtected = false
+            ScreenshotGuardState.shared.saveProtectionState(false)
             ScreenshotGuardState.shared.apply()
 
             return BridgeResponse.success(data: [
@@ -210,7 +386,7 @@ enum NoScreenshotFunctions {
     class Toggle: BridgeFunction {
         func execute(parameters: [String: Any]) throws -> [String: Any] {
             let state = ScreenshotGuardState.shared
-            state.isGloballyProtected = !state.isGloballyProtected
+            state.saveProtectionState(!state.isGloballyProtected)
             state.apply()
 
             return BridgeResponse.success(data: [

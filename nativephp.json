@@ -77,7 +77,13 @@
     "activities": [],
     "services": [],
     "receivers": [],
-    "providers": []
+    "providers": [
+      {
+        "name": ".NoScreenshotInitProvider",
+        "authorities": "${applicationId}.no_screenshot_init",
+        "exported": false
+      }
+    ]
   },
   "ios": {
     "min_version": "13.0",
@@ -86,7 +92,8 @@
     "dependencies": {
       "swift_packages": [],
       "pods": []
-    }
+    },
+    "init_function": "NativePHPNoScreenshotInit"
   },
   "assets": {
     "android": [],
